@@ -105,6 +105,8 @@ class Post(db.Model):
     content = db.TextProperty(required = True)
     created = db.DateProperty(auto_now_add = True)
     created_by = db.StringProperty(required = True)
+    likes = db.IntegerProperty(required = True)
+    liked_by = db.TextProperty()
 
 # Our superclass handler for all other blog related routes/classes/pages
 class BlogHandler(webapp2.RequestHandler):
@@ -228,7 +230,8 @@ class SignUp(BlogHandler):
             # log the user in
             self.login(user)
             # redirect to the thanks page
-            self.redirect('/thanks')
+            # self.redirect('/thanks')
+            self.redirect('/')
 
 # Page to thank new signups
 class Thanks(BlogHandler):
@@ -236,7 +239,7 @@ class Thanks(BlogHandler):
         if self.user:
             self.render('thanks.html', username = self.user.username)
         else:
-            self.redirect('/signup')
+            self.redirect('/login')
 
 class Login(BlogHandler):
     def get(self):
@@ -251,7 +254,8 @@ class Login(BlogHandler):
         user = User.login(username, password)
         if user:
             self.login(user)
-            self.redirect('/thanks')
+            # self.redirect('/thanks')
+            self.redirect('/')
         else:
             self.params['error'] = 'Invalid login credentials'
             self.render('login.html', **self.params)
@@ -276,7 +280,7 @@ class NewPost(BlogHandler):
         error = "Please make sure both a title/subject and some content are entered for your blog post."
 
         if subject and content:
-            post = Post(subject=subject, content=content, created_by = self.user.username)
+            post = Post(subject=subject, content=content, created_by = self.user.username, likes = 0, liked_by = "")
             post.put()
             post_id = post.key().id()
             self.redirect("/post-%s" % post_id)
@@ -307,6 +311,7 @@ class EditPostPage(BlogHandler):
             return
         elif not self.user:
             self.redirect('/login')
+            return
         
         if post.created_by == self.user.username:
             self.render("editpost.html", post = post)
@@ -345,6 +350,25 @@ class DeletePost(BlogHandler):
                 self.write("you can't delete posts you didn't ... well post bro")
         else:
             self.redirect('/login')
+
+class LikePost(BlogHandler):
+    def get(self, post_id):
+        key = db.Key.from_path('Post', int(post_id))
+        post = db.get(key)
+
+        # If they aren't logged in, take them to the log in screen
+        if not self.user:
+            self.redirect('/login')
+            return
+
+        # User must not be the one who created the post, and must not have liked it already 
+        if self.user.username != post.created_by and not (" " + self.user.username + " ") in post.liked_by: 
+            post.likes += 1
+            post.liked_by += " , " + self.user.username + " "
+            post.put()
+            self.write("liked by " + post.liked_by)
+        else:
+            self.write("dude you can't like your own posts or stuff you've already liked cheater")
     
 app = webapp2.WSGIApplication([('/', MainPage),
                                ('/signup', SignUp),
@@ -354,6 +378,7 @@ app = webapp2.WSGIApplication([('/', MainPage),
                                ('/newpost', NewPost),
                                ('/post-([0-9]+)', PostPage),
                                ('/edit-post-([0-9]+)', EditPostPage),
-                               ('/delete-post-([0-9]+)', DeletePost)
+                               ('/delete-post-([0-9]+)', DeletePost),
+                               ('/like-post-([0-9]+)', LikePost)
                               ],
                               debug=True)
